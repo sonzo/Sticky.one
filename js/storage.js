@@ -1,42 +1,79 @@
 'use strict';
 
 /**
- * storage.js — Persist app data to localStorage.
+ * storage.js — Persist app data to IndexedDB.
  */
 const Storage = (() => {
-    const KEY = 'sticky_tasks_v1';
-    const COLLAPSED_KEY = 'sticky_collapsed_v1';
+    const DB_NAME = 'sticky_one';
+    const DB_VERSION = 1;
+    const STORE = 'kv';
 
-    function load() {
+    let dbPromise = null;
+
+    function openDB() {
+        if (dbPromise) return dbPromise;
+        dbPromise = new Promise((resolve, reject) => {
+            const req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onupgradeneeded = e => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE)) {
+                    db.createObjectStore(STORE, { keyPath: 'key' });
+                }
+            };
+            req.onsuccess = e => resolve(e.target.result);
+            req.onerror = e => reject(e.target.error);
+        });
+        return dbPromise;
+    }
+
+    async function idbGet(key) {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
+            req.onsuccess = () => resolve(req.result?.value ?? null);
+            req.onerror = e => reject(e.target.error);
+        });
+    }
+
+    async function idbSet(key, value) {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const req = db.transaction(STORE, 'readwrite').objectStore(STORE).put({ key, value });
+            req.onsuccess = () => resolve();
+            req.onerror = e => reject(e.target.error);
+        });
+    }
+
+    async function load() {
         try {
-            const raw = localStorage.getItem(KEY);
-            return raw ? JSON.parse(raw) : { groups: [] };
+            const data = await idbGet('appdata');
+            return data ?? { groups: [] };
         } catch (e) {
             console.error('[Storage] load failed:', e);
             return { groups: [] };
         }
     }
 
-    function save(data) {
+    async function save(data) {
         try {
-            localStorage.setItem(KEY, JSON.stringify(data));
+            await idbSet('appdata', data);
         } catch (e) {
             console.error('[Storage] save failed:', e);
         }
     }
 
-    function loadCollapsed() {
+    async function loadCollapsed() {
         try {
-            const raw = localStorage.getItem(COLLAPSED_KEY);
-            return raw ? new Set(JSON.parse(raw)) : new Set();
+            const arr = await idbGet('collapsed');
+            return arr ? new Set(arr) : new Set();
         } catch (e) {
             return new Set();
         }
     }
 
-    function saveCollapsed(collapsedSet) {
+    async function saveCollapsed(collapsedSet) {
         try {
-            localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsedSet]));
+            await idbSet('collapsed', [...collapsedSet]);
         } catch (e) {
             console.error('[Storage] saveCollapsed failed:', e);
         }

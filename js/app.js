@@ -258,9 +258,9 @@ document.addEventListener('keydown', e => {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
-function init() {
-    appData = Storage.load();
-    uiState.collapsedGroups = Storage.loadCollapsed();
+async function init() {
+    appData = await Storage.load();
+    uiState.collapsedGroups = await Storage.loadCollapsed();
 
     // Resume any timers that were still running when the page was last closed
     appData.groups.forEach(group => {
