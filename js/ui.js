@@ -15,21 +15,16 @@ const UI = (() => {
         const app = document.getElementById('app');
         const frag = document.createDocumentFragment();
 
-        // New-group form appears at the top
-        if (uiState.addingGroup) {
-            frag.appendChild(createGroupForm(null));
-        }
-
-        if (data.groups.length === 0 && !uiState.addingGroup) {
+        if (data.groups.length === 0) {
             frag.appendChild(createEmptyState());
         } else {
-            data.groups.forEach(group => {
-                if (uiState.editingGroupId === group.id) {
-                    frag.appendChild(createGroupForm(group));
-                } else {
-                    frag.appendChild(createGroupView(group, uiState));
-                }
+            const grid = document.createElement('div');
+            grid.className = 'group-grid';
+            const sortedGroups = [...data.groups].sort((a, b) => a.name.localeCompare(b.name));
+            sortedGroups.forEach(group => {
+                grid.appendChild(createGroupView(group, uiState));
             });
+            frag.appendChild(grid);
         }
 
         app.innerHTML = '';
@@ -52,12 +47,11 @@ const UI = (() => {
     function createGroupForm(group) {
         const isNew = group == null;
 
-        const article = document.createElement('article');
-        article.className = 'group-card group-card--edit';
+        const div = document.createElement('div');
 
         const h3 = document.createElement('h3');
         h3.textContent = isNew ? 'New Group' : 'Edit Group';
-        article.appendChild(h3);
+        div.appendChild(h3);
 
         const label = document.createElement('label');
         label.textContent = 'Group Name';
@@ -67,7 +61,7 @@ const UI = (() => {
         input.placeholder = 'e.g. Work, Personal…';
         input.value = isNew ? '' : group.name;
         label.appendChild(input);
-        article.appendChild(label);
+        div.appendChild(label);
 
         const actions = document.createElement('div');
         actions.className = 'form-actions';
@@ -81,9 +75,9 @@ const UI = (() => {
         const btnCancel = mkBtn('Cancel', 'secondary outline', 'cancel-group', {}, 'close');
         actions.appendChild(btnSave);
         actions.appendChild(btnCancel);
-        article.appendChild(actions);
+        div.appendChild(actions);
 
-        return article;
+        return div;
     }
 
     // ── Group view ─────────────────────────────────────────────────────────────
@@ -121,24 +115,14 @@ const UI = (() => {
         article.appendChild(header);
 
         if (!isCollapsed) {
-            // Task list
-            const hasContent = group.tasks.length > 0 || uiState.addingTaskToGroupId === group.id;
-            if (hasContent) {
+            if (group.tasks.length > 0) {
                 const taskList = document.createElement('div');
                 taskList.className = 'task-list';
 
-                group.tasks.forEach(task => {
-                    if (uiState.editingTaskId === task.id) {
-                        taskList.appendChild(createTaskForm(task, group.id));
-                    } else {
-                        taskList.appendChild(createTaskView(task, group.id));
-                    }
+                const sortedTasks = [...group.tasks].sort((a, b) => a.name.localeCompare(b.name));
+                sortedTasks.forEach(task => {
+                    taskList.appendChild(createTaskView(task, group.id));
                 });
-
-                // New-task form at the bottom of the list
-                if (uiState.addingTaskToGroupId === group.id) {
-                    taskList.appendChild(createTaskForm(null, group.id));
-                }
 
                 article.appendChild(taskList);
             }
@@ -158,7 +142,6 @@ const UI = (() => {
         const isNew = task == null;
 
         const div = document.createElement('div');
-        div.className = 'task-form';
 
         const h4 = document.createElement('h4');
         h4.textContent = isNew ? 'New Task' : 'Edit Task';
@@ -213,7 +196,7 @@ const UI = (() => {
             const linkIcon = document.createElement('span');
             linkIcon.className = 'material-icons';
             linkIcon.setAttribute('aria-hidden', 'true');
-            linkIcon.textContent = 'link';
+            linkIcon.textContent = 'link2';
             a.appendChild(linkIcon);
             linkCell.appendChild(a);
         }
@@ -309,6 +292,20 @@ const UI = (() => {
         return label;
     }
 
+    // ── Modal ─────────────────────────────────────────────────────────────────────
+
+    function openModal(contentNode) {
+        const body = document.getElementById('app-modal-body');
+        body.innerHTML = '';
+        body.appendChild(contentNode);
+        document.getElementById('app-modal').showModal();
+    }
+
+    function closeModal() {
+        document.getElementById('app-modal').close();
+        document.getElementById('app-modal-body').innerHTML = '';
+    }
+
     // ── Targeted timer update (avoids full re-render every second) ─────────────
 
     function updateTimerDisplay(taskId, totalSeconds) {
@@ -316,5 +313,5 @@ const UI = (() => {
         if (el) el.textContent = Timer.formatTime(totalSeconds);
     }
 
-    return { render, updateTimerDisplay };
+    return { render, openModal, closeModal, createGroupForm, createTaskForm, updateTimerDisplay };
 })();

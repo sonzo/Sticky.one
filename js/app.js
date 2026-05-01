@@ -10,10 +10,6 @@
 let appData = { groups: [] };
 
 let uiState = {
-    editingGroupId: null,        // id of group currently being edited
-    editingTaskId: null,         // id of task currently being edited
-    addingGroup: false,          // true when new-group form is visible
-    addingTaskToGroupId: null,   // groupId when new-task form is visible
     collapsedGroups: new Set(),  // set of group ids that are collapsed
 };
 
@@ -21,16 +17,6 @@ let uiState = {
 
 function genId() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
-function resetUI() {
-    return {
-        editingGroupId: null,
-        editingTaskId: null,
-        addingGroup: false,
-        addingTaskToGroupId: null,
-        collapsedGroups: uiState.collapsedGroups,  // preserve across resets
-    };
 }
 
 function findGroup(id) {
@@ -72,8 +58,7 @@ function handleToggleGroup(groupId) {
 }
 
 function handleAddGroup() {
-    uiState = { ...resetUI(), addingGroup: true };
-    UI.render(appData, uiState);
+    UI.openModal(UI.createGroupForm(null));
     document.getElementById('group-name-input')?.focus();
 }
 
@@ -83,7 +68,7 @@ function handleSaveNewGroup() {
     if (!name) { input?.focus(); return; }
 
     appData.groups.push({ id: genId(), name, tasks: [] });
-    uiState = resetUI();
+    UI.closeModal();
     saveAndRender();
 }
 
@@ -94,13 +79,14 @@ function handleSaveEditGroup(groupId) {
 
     const group = findGroup(groupId);
     if (group) group.name = name;
-    uiState = resetUI();
+    UI.closeModal();
     saveAndRender();
 }
 
 function handleEditGroup(groupId) {
-    uiState = { ...resetUI(), editingGroupId: groupId };
-    UI.render(appData, uiState);
+    const group = findGroup(groupId);
+    if (!group) return;
+    UI.openModal(UI.createGroupForm(group));
     document.getElementById('group-name-input')?.focus();
 }
 
@@ -111,31 +97,28 @@ function handleDeleteGroup(groupId) {
     if (group) group.tasks.forEach(t => Timer.stopInterval(t.id));
 
     appData.groups = appData.groups.filter(g => g.id !== groupId);
-    uiState = resetUI();
     saveAndRender();
 }
 
 function handleCancelGroup() {
-    uiState = resetUI();
-    UI.render(appData, uiState);
+    UI.closeModal();
 }
 
 // ── Task handlers ──────────────────────────────────────────────────────────
 
 function handleAddTask(groupId) {
-    uiState = { ...resetUI(), addingTaskToGroupId: groupId };
-    UI.render(appData, uiState);
+    UI.openModal(UI.createTaskForm(null, groupId));
     document.querySelector('.task-name-input')?.focus();
 }
 
-/** Reads the single visible task form from the DOM. */
+/** Reads the task form values from the modal. */
 function getTaskFormValues() {
-    const form = document.querySelector('.task-form');
-    if (!form) return null;
+    const body = document.getElementById('app-modal-body');
+    if (!body) return null;
     return {
-        name: (form.querySelector('.task-name-input')?.value ?? '').trim(),
-        url: (form.querySelector('.task-url-input')?.value ?? '').trim(),
-        description: form.querySelector('.task-desc-input')?.value ?? '',
+        name: (body.querySelector('.task-name-input')?.value ?? '').trim(),
+        url: (body.querySelector('.task-url-input')?.value ?? '').trim(),
+        description: body.querySelector('.task-desc-input')?.value ?? '',
     };
 }
 
@@ -155,7 +138,7 @@ function handleSaveNewTask(groupId) {
         timerStart: null,
     });
 
-    uiState = resetUI();
+    UI.closeModal();
     saveAndRender();
 }
 
@@ -170,13 +153,14 @@ function handleSaveEditTask(groupId, taskId) {
     found.task.url = values.url;
     found.task.description = values.description;
 
-    uiState = resetUI();
+    UI.closeModal();
     saveAndRender();
 }
 
 function handleEditTask(taskId) {
-    uiState = { ...resetUI(), editingTaskId: taskId };
-    UI.render(appData, uiState);
+    const found = findTask(taskId);
+    if (!found) return;
+    UI.openModal(UI.createTaskForm(found.task, found.group.id));
     document.querySelector('.task-name-input')?.focus();
 }
 
@@ -188,13 +172,11 @@ function handleDeleteTask(groupId, taskId) {
     const group = findGroup(groupId);
     if (group) group.tasks = group.tasks.filter(t => t.id !== taskId);
 
-    uiState = resetUI();
     saveAndRender();
 }
 
 function handleCancelTask() {
-    uiState = resetUI();
-    UI.render(appData, uiState);
+    UI.closeModal();
 }
 
 // ── Timer handlers ─────────────────────────────────────────────────────────
@@ -265,17 +247,12 @@ document.addEventListener('click', e => {
     }
 });
 
-// Keyboard shortcuts: Enter to save, Escape to cancel
+// Keyboard shortcut: Enter in group name field saves the form
 document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.id === 'group-name-input') {
         e.preventDefault();
-        if (uiState.addingGroup) handleSaveNewGroup();
-        else if (uiState.editingGroupId) handleSaveEditGroup(uiState.editingGroupId);
-    }
-
-    if (e.key === 'Escape') {
-        if (uiState.addingGroup || uiState.editingGroupId) handleCancelGroup();
-        else if (uiState.addingTaskToGroupId || uiState.editingTaskId) handleCancelTask();
+        const saveBtn = document.querySelector('#app-modal-body [data-action^="save-"]');
+        if (saveBtn) saveBtn.click();
     }
 });
 
@@ -293,6 +270,11 @@ function init() {
             }
         });
     });
+
+    // Close modal on backdrop click; clear body on native Escape (cancel event)
+    const modal = document.getElementById('app-modal');
+    modal.addEventListener('click', e => { if (e.target === modal) UI.closeModal(); });
+    modal.addEventListener('cancel', () => { document.getElementById('app-modal-body').innerHTML = ''; });
 
     UI.render(appData, uiState);
 }
